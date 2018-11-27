@@ -1,0 +1,407 @@
+﻿using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class NPC_AI : MonoBehaviour {
+
+	// public HUD hud; // hud integration
+
+	public AudioClip sfxDie;
+	public AudioClip sfxHit;
+
+
+	public float timeBtwTargetLimit;
+	public float speed;
+	public float chaseProximity, attackProximity, wanderAngle;
+	public int lvl1Health, lvl2Health;
+	public int lvl1Damage, lvl2Damage;
+	public float timeBtwAttacks;
+	public float bufferTime;
+	public LayerMask blockingLayer;
+
+	private GameObject player;
+	private Rigidbody2D rb;
+	bool facingRight = true;
+
+	private float timeBtwTarget;
+	private float timeUntilNxtAttack;
+	private float timeUntilWander;
+	private float velocityX;
+	private float velocityY;
+	private float lastGoodVelocityX;
+	private	float lastGoodVelocityY;
+	private int state, health, damage;
+	
+	enum npcState{
+  		WANDERING,
+  		CHASING,
+  		ATTACKING,
+  		DEAD
+	}
+
+	// Use this for initialization
+	void Start () {
+		SetParameters();
+	}
+	
+	// Update is called once per frame
+	void Update () {
+
+	}
+
+	void SetParameters(){
+
+		rb = GetComponent<Rigidbody2D>();
+		player = GameObject.Find("Player(Clone)");
+		timeBtwTargetLimit = 8f;
+		wanderAngle = 45f;
+		chaseProximity = 5f;
+		attackProximity = .5f;
+		speed = 5f;
+		timeBtwAttacks = 1f;
+		lvl1Damage = 10;
+		lvl2Damage = 20;
+		lvl1Health = 50;
+		lvl1Health = 100;
+		bufferTime = 3f;
+		lastGoodVelocityX = 0.0f;
+		lastGoodVelocityY = 1f;
+		blockingLayer = LayerMask.GetMask("BlockingLayer");
+
+		if(gameObject.tag == ("lvl1NPC")){
+			health = lvl1Health;
+			damage = lvl1Damage;
+		}
+		else if(gameObject.tag == ("lvl2NPC")){
+			health = lvl2Health;
+			damage = lvl2Damage;
+		}	
+		else{
+			health = lvl1Health;
+			damage = lvl1Damage;	
+		}
+	}
+
+	void FixedUpdate(){
+		NpcStateMachine();
+		NpcDecisionMaking();
+	}
+
+	void NpcStateMachine(){
+
+		// distance between Npc and player.
+		float distanceToTarget = Vector2.Distance(transform.position, player.transform.position);
+		Vector2 playerDirection = player.transform.position - transform.position; 
+		Vector2 Npcforward = transform.forward; 
+		float angle = Vector2.Angle(playerDirection, Npcforward);
+
+		// If the player falls in the NPC's field of vision the npc state machine is set to attacking.
+		// If not and the player is withing the NPC's  chasing proximity then the npc will chase the player.
+		// Other wise the NPC will wander around.
+		if (angle < 40F && distanceToTarget <= attackProximity){
+			
+			//Debug.Log("You are in the enemies field of view WARNING!!");
+			state = (int)npcState.ATTACKING;	
+		}
+		
+		else if(distanceToTarget <= chaseProximity){
+
+			state = (int)npcState.CHASING;
+			//Debug.Log("CHASING STATE  distance: " + distanceToTarget);
+		}
+		else{
+			state = (int)npcState.WANDERING;		
+			//Debug.Log("WANDER STATE distance: " + distanceToTarget);
+		}
+	}
+
+		// Makes decsions based on Npc's state.
+		void NpcDecisionMaking(){
+
+		velocityX = rb.velocity.x;
+		velocityY = rb.velocity.y;
+
+		if(velocityX < .05 && velocityX > -.05 && velocityY < .05 && velocityY > -.05 ){
+			velocityX = lastGoodVelocityX;
+			velocityY = lastGoodVelocityY;
+
+		}
+		else{
+
+			lastGoodVelocityX = velocityX;
+			lastGoodVelocityY = velocityY;
+		}
+
+		//FacingDirection(velocityX, velocityY);
+
+		switch(state) {
+			case (int)npcState.WANDERING:
+				//Debug.Log("WANDERING STATE");
+				WanderState();
+				break; 
+			case (int)npcState.CHASING:
+				//Debug.Log("CHASING STATE");
+				ChasingState();
+				break;
+			case (int)npcState.ATTACKING:
+				//Debug.Log("ATTACKING STATE");
+				AttackState(velocityX, velocityY);
+				break; 
+		}
+	}
+
+	void WanderState(){
+
+		// If the NPC position is not the same as the one of the target at index current,the NPC will move toward that target.
+		// If NPC is already at the target, the index will go to a random index to choose a random next target.
+		//Collider2D[] enemiesToDamage = Physics2D.OverlapCircleAll(transform.position, attackRange, enemyMask);
+		// npc wangers in differtrnt dirction after a certain time ot if the npc stops moving 		
+		if(rb.velocity.sqrMagnitude <= .05){
+
+			float xOffset = Mathf.Cos(wanderAngle);
+			float yOffset = Mathf.Sin(wanderAngle);
+
+			float randomX = Random.Range(rb.velocity.x - xOffset, rb.velocity.x + xOffset);
+			float randomY = Random.Range(rb.velocity.y - yOffset, rb.velocity.y + xOffset);
+
+			Vector2 desiredVelocity = new Vector2(randomX, randomY);
+
+			// flips the sprite along the y axis to face the correct direction.
+			if(desiredVelocity.x > 0 && !facingRight){
+				flip();
+			}
+			else if(desiredVelocity.x < 0 && facingRight){
+				flip();
+			}
+
+			if(desiredVelocity.sqrMagnitude > 1){
+				desiredVelocity = desiredVelocity.normalized;
+			}
+
+			Vector2 steeringVelocity = new Vector2((desiredVelocity.x*speed), (desiredVelocity.y*speed)); 
+	
+			rb.velocity = new Vector2(steeringVelocity.x, steeringVelocity.y);
+			//timeBtwTarget = timeBtwTargetLimit;
+		}
+		else{
+			//timeBtwTarget -= Time.fixedDeltaTime;						
+		}
+
+		//Debug.Log("Npc's velocity in X:" + rb.velocity.x + " in Y: " + rb.velocity.y);
+	}
+
+
+	void ChasingState(){
+
+		Vector2 distanceToTarget = new Vector2(player.transform.position.x - transform.position.x, player.transform.position.y - transform.position.y);
+		// NPC will move toward position of player
+		if(transform.position != player.transform.position){
+
+			MoveToTarget(player.transform.position);
+		}
+		if(distanceToTarget.sqrMagnitude > chaseProximity){
+
+			if(timeUntilWander <= 0){
+				timeUntilWander = bufferTime;
+				rb.velocity = new Vector2(0, 0);
+				//Debug.Log("CHASING STATE  distance: " + distanceToTarget);
+			}
+			else{
+				timeUntilWander -= Time.fixedDeltaTime;	
+				//Debug.Log("Time Until Wander: " + timeUntilWander);
+			}
+		}
+	}
+
+	void AttackState(float velocityX, float velocityY){
+
+		// Attacks player if set time has passed since lass attack and player is in range
+		if( timeUntilNxtAttack <= 0){
+
+			timeUntilNxtAttack = timeBtwAttacks;
+			//hud.hit();
+			/*
+			Vector3 rayDirection = new Vector3(velocityX, velocityY, 0);
+	
+			RaycastHit2D  hit;
+			rayDirection = rayDirection.normalized;
+
+			Vector3 offSetRay = new Vector3( rayDirection.x * .5f, rayDirection.y *.5f, 0);
+
+			//Debug.DrawRay(transform.position, rayDirection * attackProximity, Color.red); 
+			hit = Physics2D.Raycast(transform.position + offSetRay, rayDirection, attackProximity, blockingLayer);			
+	     
+			if(hit.collider != null){
+
+				// Debug.Log("colllider that ray hits" + hit.collider.name);
+				if(hit.collider.tag == "Player"){
+					hit.collider.gameObject.GetComponent<Player_Central>().TakeDamage(damage);
+				}
+			}				
+			else{
+				//Debug.Log("Did not hit an enemy");
+			}*/
+			player.GetComponent<Player_Central>().TakeDamage(damage);
+		}	
+		else{
+			timeUntilNxtAttack -= Time.deltaTime;
+		}
+	}
+
+	/*
+	void FacingDirection(float velocityX, float velocityY){
+		
+
+		//animation set  the sprite to face upward
+		if(velocityY > 0 && velocityX == 0){
+
+			// Runs correct animation for idle or move
+			
+				playerAnimator.SetBool("playerUpIdle", true);
+				
+				//Debug.Log("facing up");
+
+				//Set everything else to false
+				playerAnimator.SetBool("playerDiagUpIdle", false);
+				playerAnimator.SetBool("playerRightIdle", false);
+				playerAnimator.SetBool("playerDiagDownIdle", false);
+				playerAnimator.SetBool("playerDownIdle", false);
+		}
+
+		// animate sprite diagonal up
+		else if(velocityY > 0 && velocityX != 0 ){
+
+			playerAnimator.SetBool("playerDiagUpIdle", true);
+			//Debug.Log("facing Diag UP");
+			//Set everything else to false
+			playerAnimator.SetBool("playerUpIdle", false);
+			playerAnimator.SetBool("playerRightIdle", false);
+			playerAnimator.SetBool("playerDiagDownIdle", false);
+			playerAnimator.SetBool("playerDownIdle", false);
+		}
+
+		// animate sprite right
+		else if(velocityY == 0 && velocityX != 0 ){
+
+			playerAnimator.SetBool("playerRightIdle", true);
+
+			//Debug.Log("facing Right");
+			//Set everything else to false
+			playerAnimator.SetBool("playerUpIdle", false);
+			playerAnimator.SetBool("playerDiagUpIdle", false);
+			playerAnimator.SetBool("playerDiagDownIdle", false);
+			playerAnimator.SetBool("playerDownIdle", false);
+		}
+
+		// animate sprite diagnol down
+		else if(velocityY < 0 && velocityX != 0 ){
+
+			playerAnimator.SetBool("playerDiagDownIdle", true);
+			//Debug.Log("facing Diag Down");
+			//Set everything else to false
+			playerAnimator.SetBool("playerUpIdle", false);
+			playerAnimator.SetBool("playerDiagUpIdle", false);
+			playerAnimator.SetBool("playerRightIdle", false);
+			playerAnimator.SetBool("playerDownIdle", false);
+
+
+		}
+
+		//animation set set the sprite to face downward 
+		else if(velocityY < 0 && velocityX == 0){
+
+		playerAnimator.SetBool("playerDownIdle", true);
+		//Debug.Log("facing Down");
+		//Set everything else to false
+		playerAnimator.SetBool("playerUpIdle", false);
+		playerAnimator.SetBool("playerDiagUpIdle", false);
+		playerAnimator.SetBool("playerRightIdle", false);
+		playerAnimator.SetBool("playerDiagDownIdle", false);
+		}
+	
+		if(velocityX > 0 && !facingRight){
+			flip();
+		}
+		else if(velocityX < 0 && facingRight){
+			flip();
+		}
+
+		playerAnimator.SetFloat("Speed", rb.velocity.magnitude);
+	}
+	*/
+	// Given a position it will move the npc to that position
+	void MoveToTarget(Vector2 targetPosition){
+
+		Vector2 desiredVelocity = new Vector2(targetPosition.x - transform.position.x, targetPosition.y - transform.position.y);
+		
+		if(desiredVelocity.x > 0 && !facingRight){
+			flip();
+		}
+		else if(desiredVelocity.x < 0 && facingRight){
+			flip();
+		}
+
+		if(desiredVelocity.sqrMagnitude > 1){
+			desiredVelocity = desiredVelocity.normalized;
+		}
+
+		Vector2 steeringVelocity = new Vector2((desiredVelocity.x*speed), (desiredVelocity.y*speed)); 
+
+		rb.velocity = new Vector2(steeringVelocity.x - rb.velocity.x, steeringVelocity.y - rb.velocity.y);
+
+		//Debug.Log("Npc's velocity in X:" + rb.velocity.x + " in Y: " + rb.velocity.y);
+		//Debug.DrawLine(targetPosition, transform.position, Color.black);
+	}
+
+
+    
+	// Called by player script when attacking Npc.
+	public void TakeDamage(int enemyDamage)
+	{
+		
+		float distanceToTarget = Vector2.Distance(transform.position, player.transform.position);
+
+		Debug.Log("Clicked on enemy");
+		
+		if(distanceToTarget <= player.GetComponent<Player_Movement>().attackRange){
+			SoundManager.instance.PlaySingle(sfxHit);
+
+			health -= player.GetComponent<Player_Movement>().enemyDamage;
+			//Debug.Log("Damage Received: " + damage + " Health: " + health);
+
+			if(health <= 0){
+				SoundManager.instance.PlaySingle(sfxDie);
+				state = (int)npcState.DEAD;
+
+				//Debug.Log("NPC DEAD!!");
+				Destroy(gameObject);
+			}
+			
+		}
+		
+	}
+
+	void flip(){
+
+		facingRight = !facingRight;
+
+		Vector3 theScale = transform.localScale;
+		theScale.x *=-1;
+		transform.localScale = theScale;
+	}
+
+	void OnDrawGizmosSelected(){
+
+		// Highlights npc attack range red in unity editor.
+		Gizmos.color = Color.red;
+		Gizmos.DrawWireSphere(transform.position, attackProximity);
+
+		// Higlights npc chase range yellow in unity editor.
+		Gizmos.color = Color.yellow;
+		Gizmos.DrawWireSphere(transform.position, chaseProximity);
+	}
+
+	public int GetNPCState(){
+		return state;
+	}
+}
