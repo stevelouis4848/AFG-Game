@@ -150,46 +150,35 @@ public class NPC_AI : MonoBehaviour {
 		}
 	}
 
-	void WanderState(){
+		void WanderState(){
 
-		// If the NPC position is not the same as the one of the target at index current,the NPC will move toward that target.
-		// If NPC is already at the target, the index will go to a random index to choose a random next target.
-		//Collider2D[] enemiesToDamage = Physics2D.OverlapCircleAll(transform.position, attackRange, enemyMask);
-		// npc wangers in differtrnt dirction after a certain time ot if the npc stops moving 		
-		if(rb.velocity.sqrMagnitude <= .05){
+			// NPC wanders in a different direction after a certain amount of time.
+			if(wanderAngleTime <= 0 || rb.velocity.sqrMagnitude <= .05){
 
-			float xOffset = Mathf.Cos(wanderAngle);
-			float yOffset = Mathf.Sin(wanderAngle);
+				wanderAngleTime = maxWanderAngleTime;
 
-			float randomX = Random.Range(rb.velocity.x - xOffset, rb.velocity.x + xOffset);
-			float randomY = Random.Range(rb.velocity.y - yOffset, rb.velocity.y + xOffset);
+				float velocityX = rb.velocity.x;
+				float velocityY = rb.velocity.y;
 
-			Vector2 desiredVelocity = new Vector2(randomX, randomY);
+				//Random angle is choosem between 0 and max wanderAngle.
+				float wanderAngle = Random.Range(0, maxWanderAngle);
 
-			// flips the sprite along the y axis to face the correct direction.
-			if(desiredVelocity.x > 0 && !facingRight){
-				flip();
-			}
-			else if(desiredVelocity.x < 0 && facingRight){
-				flip();
-			}
+				float xOffset = Mathf.Cos(wanderAngle);
+				float yOffset = Mathf.Sin(wanderAngle);
 
-			if(desiredVelocity.sqrMagnitude > 1){
+				// Desired velocity and steering velocity calculated based on point on the wandering angle.
+				Vector2 desiredVelocity = new Vector2(velocityX + xOffset, velocityY + yOffset);
+
 				desiredVelocity = desiredVelocity.normalized;
+
+				Vector2 steeringVelocity = new Vector2((desiredVelocity.x*speed) - velocityX, (desiredVelocity.y*speed) - velocityY); 
+
+				rb.velocity = new Vector2(steeringVelocity.x, steeringVelocity.y);
 			}
-
-			Vector2 steeringVelocity = new Vector2((desiredVelocity.x*speed), (desiredVelocity.y*speed)); 
-	
-			rb.velocity = new Vector2(steeringVelocity.x, steeringVelocity.y);
-			//timeBtwTarget = timeBtwTargetLimit;
+			else{
+				wanderAngleTime = -= Time.fixedDeltaTime;						
+			}
 		}
-		else{
-			//timeBtwTarget -= Time.fixedDeltaTime;						
-		}
-
-		//Debug.Log("Npc's velocity in X:" + rb.velocity.x + " in Y: " + rb.velocity.y);
-	}
-
 
 	void ChasingState(){
 
